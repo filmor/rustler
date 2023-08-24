@@ -16,6 +16,7 @@ See [`UPGRADE.md`](./UPGRADE.md) for additional help when upgrading to newer ver
 * Dropped support for `RUSTLER_NIF_VERSION`
 * Deprecated `:rustler_crates` project configuration
 * Mark `use Rustler` module configuration as compile-time
+* Rustler should now be included as a `runtime: false` dependency in Elixir projects
 
 ## [0.29.1] - 2023-06-30
 
