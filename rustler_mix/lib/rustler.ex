@@ -169,6 +169,14 @@ defmodule Rustler do
     end
   end
 
+  def sigil_cargo(string, _markers) do
+    # Cargo.toml content
+  end
+
+  def sigil_rust(string, _markers) do
+    # Content of some rust module
+  end
+
   @doc false
   def rustler_version, do: "0.32.1"
 

@@ -1,7 +1,8 @@
 defmodule Rustler.Compiler do
   @moduledoc false
 
-  alias Rustler.Compiler.{Config, Messages, Rustup}
+  alias Rustler.{Messages, Rustup}
+  alias Rustler.Compiler.Config
 
   @doc false
   def compile_crate(otp_app, config, opts) do

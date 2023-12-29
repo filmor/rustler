@@ -1,4 +1,4 @@
-defmodule Rustler.Compiler.Messages do
+defmodule Rustler.Messages do
   @moduledoc false
 
   def message(:rustup_not_installed) do
