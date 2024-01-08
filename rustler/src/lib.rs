@@ -41,6 +41,7 @@ pub use crate::types::{
     Atom, Binary, Decoder, Encoder, ErlOption, ListIterator, LocalPid, MapIterator, NewBinary,
     OwnedBinary,
 };
+
 pub mod resource;
 pub use crate::resource::ResourceArc;
 
@@ -73,3 +74,9 @@ pub use rustler_codegen::{
     init, nif, NifException, NifMap, NifRecord, NifStruct, NifTaggedEnum, NifTuple, NifUnitEnum,
     NifUntaggedEnum,
 };
+
+#[cfg(feature = "serde")]
+pub mod serde;
+
+#[cfg(feature = "serde")]
+pub use crate::serde::SerdeTerm;
