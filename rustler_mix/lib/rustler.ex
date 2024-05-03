@@ -95,6 +95,7 @@ defmodule Rustler do
 
   defmacro __using__(opts) do
     quote bind_quoted: [opts: opts] do
+      import Rustler
       otp_app = Keyword.fetch!(opts, :otp_app)
       env = Application.compile_env(otp_app, __MODULE__, [])
       config = Rustler.Compiler.compile_crate(otp_app, env, opts)
@@ -169,12 +170,14 @@ defmodule Rustler do
     end
   end
 
-  def sigil_cargo(string, _markers) do
-    # Cargo.toml content
+  defmacro sigil_CARGO(string, _markers) do
+    Module.put_attribute(__CALLER__.module, :cargo_toml, string)
   end
 
-  def sigil_rust(string, _markers) do
-    # Content of some rust module
+  defmacro sigil_RUST(string, _markers) do
+    cargo_toml = Module.get_attribute(__CALLER__.module, :cargo_toml)
+
+    IO.inspect(cargo_toml)
   end
 
   @doc false
