@@ -11,10 +11,11 @@ struct TestMonitorResourceInner {
     down_called: bool,
 }
 
-#[derive(MonitorResource)]
 pub struct TestMonitorResource {
     inner: Mutex<TestMonitorResourceInner>,
 }
+
+impl Resource for TestMonitorResource {}
 
 impl MonitorResource for TestMonitorResource {
     fn down<'a>(&'a self, _env: Env<'a>, _pid: LocalPid, mon: Monitor) {
@@ -26,11 +27,13 @@ impl MonitorResource for TestMonitorResource {
 
 /// This one is designed to look more like pointer data, to increase the
 /// chance of segfaults if the implementation is wrong.
-#[derive(Debug, Resource)]
+#[derive(Debug)]
 pub struct ImmutableResource {
     a: u32,
     b: u32,
 }
+
+impl Resource for ImmutableResource {}
 
 pub struct WithBinaries {
     a: [u8; 10],

@@ -9,6 +9,7 @@ mod monitor;
 mod registration;
 mod traits;
 mod util;
+mod phantom;
 
 use std::mem::MaybeUninit;
 
@@ -19,7 +20,7 @@ pub use monitor::Monitor;
 pub use registration::ResourceRegistration;
 use rustler_sys::c_void;
 use traits::ResourceExt;
-pub use traits::{MonitorResource, Resource};
+pub use traits::{is_monitor_resource, MonitorResource, Resource};
 use util::align_alloced_mem_for_struct;
 
 impl<'a> Term<'a> {
@@ -64,8 +65,7 @@ macro_rules! resource {
     ($struct_name:ty, $env: ident) => {{
         impl $crate::Resource for $struct_name {}
 
-        let tuple = $crate::codegen_runtime::ResourceRegistration::new::<$struct_name>(
-            stringify!(#name)
-        ).register($env);
+        let tuple =
+            $crate::codegen_runtime::ResourceRegistration::new::<$struct_name>().register($env);
     }};
 }

@@ -1,4 +1,4 @@
-use super::traits;
+use super::traits::{self, is_monitor_resource};
 use super::util::align_alloced_mem_for_struct;
 use crate::{Env, LocalPid, Monitor, MonitorResource, Resource};
 use rustler_sys::{
@@ -12,33 +12,63 @@ use std::ptr;
 
 #[derive(Debug)]
 pub struct ResourceRegistration {
-    name: &'static str,
     get_type_id: fn() -> TypeId,
+    get_type_name: fn() -> &'static str,
     init: ErlNifResourceTypeInit,
 }
 
 unsafe impl Sync for ResourceRegistration {}
-
 inventory::collect!(ResourceRegistration);
 
 impl ResourceRegistration {
-    pub const fn new<T: Resource>(name: &'static str) -> Self {
+    pub const fn new<T: Resource>() -> Self {
         let init = ErlNifResourceTypeInit {
-            dtor: if std::mem::needs_drop::<T>() {
-                resource_destructor::<T> as *const ErlNifResourceDtor
-            } else {
-                ptr::null()
-            },
+            dtor: resource_destructor::<T> as *const ErlNifResourceDtor,
             stop: ptr::null(),
             down: ptr::null(),
             members: 1,
             dyncall: ptr::null(),
         };
-        Self {
-            name,
+        let res = Self {
             init,
+            get_type_name: std::any::type_name::<T>,
             get_type_id: TypeId::of::<T>,
+        };
+
+        if is_monitor_resource::<T> {
+            res.add_down_callback()
+        } else {
+            res
         }
+    }
+
+    pub fn add_down_callback<T: ?Sized>() -> bool {
+        use std::cell::Cell;
+        use std::marker::PhantomData;
+
+        struct IsMonitorResource<'a, T: ?Sized> {
+            is_monitor_resource: &'a Cell<bool>,
+            _marker: PhantomData<T>,
+        }
+        impl<T: ?Sized> Clone for IsMonitorResource<'_, T> {
+            fn clone(&self) -> Self {
+                self.is_monitor_resource.set(false);
+                Self {
+                    is_monitor_resource: self.is_monitor_resource,
+                    _marker: PhantomData,
+                }
+            }
+        }
+        impl<T: ?Sized + MonitorResource> Copy for IsMonitorResource<'_, T> {}
+
+        let result = Cell::new(true);
+        _ = [IsMonitorResource::<T> {
+            is_monitor_resource: &result,
+            _marker: PhantomData,
+        }]
+        .clone();
+
+        result.get()
     }
 
     pub const fn add_down_callback<T: MonitorResource>(self) -> Self {
@@ -58,24 +88,40 @@ impl ResourceRegistration {
     }
 
     pub fn register(&self, env: Env) {
+        let type_id = (self.get_type_id)();
+        let type_name = (self.get_type_name)();
+
         let res: Option<*const ErlNifResourceType> = unsafe {
             open_resource_type(
                 env.as_c_arg(),
-                CString::new(self.name).unwrap().as_bytes_with_nul(),
+                CString::new(type_name).unwrap().as_bytes_with_nul(),
                 self.init,
                 ErlNifResourceFlags::ERL_NIF_RT_CREATE,
             )
         };
-
-        let type_id = (self.get_type_id)();
         unsafe { traits::register_resource_type(type_id, res.unwrap()) }
     }
 }
 
+#[macro_export]
+macro_rules! register_resource_type {
+    {$name:ty} => {
+        $crate::codegen_runtime::inventory::submit!(
+            $crate::codegen_runtime::ResourceRegistration::new::<#name>()
+        );
+    }
+}
+
 /// Drop a T that lives in an Erlang resource
-unsafe extern "C" fn resource_destructor<T>(_env: *mut ErlNifEnv, handle: *mut c_void) {
+unsafe extern "C" fn resource_destructor<T>(_env: *mut ErlNifEnv, handle: *mut c_void)
+where
+    T: Resource,
+{
+    let env = Env::new(&_env, _env);
     let aligned = align_alloced_mem_for_struct::<T>(handle);
-    ptr::drop_in_place(aligned as *mut T);
+    // Destructor takes ownership, thus the resource object will be dropped after the function has
+    // run.
+    ptr::read::<T>(aligned as *mut T).destructor(env);
 }
 
 unsafe extern "C" fn resource_down<T: MonitorResource>(
