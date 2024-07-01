@@ -42,7 +42,12 @@ pub struct WithBinaries {
 
 pub fn on_load(env: Env) -> bool {
     rustler::resource!(TestResource, env);
-    // rustler::resource!(ImmutableResource, env);
+    if env.add_resource_type::<ImmutableResource>().is_err() {
+        return false;
+    }
+    if env.add_monitor_resource_type::<TestMonitorResource>().is_err() {
+        return false;
+    }
     rustler::resource!(WithBinaries, env);
     true
 }
@@ -107,20 +112,22 @@ pub fn resource_immutable_count() -> u32 {
 
 #[rustler::nif]
 pub fn monitor_resource_make() -> ResourceArc<TestMonitorResource> {
-    ResourceArc::new(TestMonitorResource {
+    TestMonitorResource {
         inner: Mutex::new(TestMonitorResourceInner {
             mon: None,
             down_called: false,
         }),
-    })
+    }
+    .into()
 }
 
 #[rustler::nif]
 pub fn resource_make_with_binaries() -> ResourceArc<WithBinaries> {
-    ResourceArc::new(WithBinaries {
+    WithBinaries {
         a: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
         b: vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
-    })
+    }
+    .into()
 }
 
 #[rustler::nif]
@@ -149,7 +156,7 @@ pub fn monitor_resource_monitor(
     pid: LocalPid,
 ) {
     let mut inner = resource.inner.lock().unwrap();
-    inner.mon = resource.monitor(Some(&env), &pid);
+    inner.mon = env.monitor(&resource, &pid);
     assert!(inner.mon.is_some());
     inner.down_called = false;
 }
@@ -162,5 +169,5 @@ pub fn monitor_resource_down_called(resource: ResourceArc<TestMonitorResource>) 
 #[rustler::nif]
 pub fn monitor_resource_demonitor(env: Env, resource: ResourceArc<TestMonitorResource>) -> bool {
     let inner = resource.inner.lock().unwrap();
-    resource.demonitor(Some(&env), inner.mon.as_ref().unwrap())
+    env.demonitor(&resource, inner.mon.as_ref().unwrap())
 }

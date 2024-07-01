@@ -6,7 +6,7 @@ use std::fmt;
 use crate::{Encoder, Env, OwnedBinary, Term};
 
 // Re-export of inventory
-pub use crate::resource::ResourceRegistration;
+pub use crate::resource::Registration;
 pub use inventory;
 
 // Names used by the `rustler::init!` macro or other generated code.
@@ -103,9 +103,11 @@ impl fmt::Debug for NifReturned {
 /// This takes arguments, including raw pointers, that must be correct.
 pub unsafe fn handle_nif_init_call<'a>(
     function: Option<for<'b> fn(Env<'b>, Term<'b>) -> bool>,
-    env: Env<'a>,
+    mut env: Env<'a>,
     load_info: Term<'a>,
-) -> c_int {
+) -> c_int
+{
+    env.to_init_env();
     function.map_or(0, |inner| i32::from(!inner(env, load_info)))
 }
 

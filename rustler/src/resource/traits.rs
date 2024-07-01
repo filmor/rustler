@@ -21,6 +21,10 @@ pub trait Resource: Sized + Send + Sync + 'static {
     fn destructor<'a>(mut self, _env: Env<'a>) {}
 }
 
+pub trait MonitorResource: Resource {
+    fn down<'a>(&'a self, env: Env<'a>, pid: LocalPid, monitor: Monitor);
+}
+
 #[doc(hidden)]
 pub(crate) trait ResourceExt: 'static {
     fn get_resource_type() -> Option<NifResourcePtr> {
@@ -30,8 +34,4 @@ pub(crate) trait ResourceExt: 'static {
     }
 }
 
-impl<T: 'static> ResourceExt for T {}
-
-pub trait MonitorResource: Resource {
-    fn down<'a>(&'a self, env: Env<'a>, pid: LocalPid, monitor: Monitor);
-}
+impl<T: Resource> ResourceExt for T {}

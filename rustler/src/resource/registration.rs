@@ -1,5 +1,5 @@
-use super::traits::{self, is_monitor_resource};
 use super::util::align_alloced_mem_for_struct;
+use super::{traits, ResourceInitError};
 use crate::{Env, LocalPid, Monitor, MonitorResource, Resource};
 use rustler_sys::{
     c_char, c_void, ErlNifEnv, ErlNifMonitor, ErlNifPid, ErlNifResourceDown, ErlNifResourceDtor,
@@ -11,16 +11,13 @@ use std::mem::MaybeUninit;
 use std::ptr;
 
 #[derive(Debug)]
-pub struct ResourceRegistration {
+pub struct Registration {
     get_type_id: fn() -> TypeId,
     get_type_name: fn() -> &'static str,
     init: ErlNifResourceTypeInit,
 }
 
-unsafe impl Sync for ResourceRegistration {}
-inventory::collect!(ResourceRegistration);
-
-impl ResourceRegistration {
+impl Registration {
     pub const fn new<T: Resource>() -> Self {
         let init = ErlNifResourceTypeInit {
             dtor: resource_destructor::<T> as *const ErlNifResourceDtor,
@@ -29,46 +26,11 @@ impl ResourceRegistration {
             members: 1,
             dyncall: ptr::null(),
         };
-        let res = Self {
+        Self {
             init,
             get_type_name: std::any::type_name::<T>,
             get_type_id: TypeId::of::<T>,
-        };
-
-        if is_monitor_resource::<T> {
-            res.add_down_callback()
-        } else {
-            res
         }
-    }
-
-    pub fn add_down_callback<T: ?Sized>() -> bool {
-        use std::cell::Cell;
-        use std::marker::PhantomData;
-
-        struct IsMonitorResource<'a, T: ?Sized> {
-            is_monitor_resource: &'a Cell<bool>,
-            _marker: PhantomData<T>,
-        }
-        impl<T: ?Sized> Clone for IsMonitorResource<'_, T> {
-            fn clone(&self) -> Self {
-                self.is_monitor_resource.set(false);
-                Self {
-                    is_monitor_resource: self.is_monitor_resource,
-                    _marker: PhantomData,
-                }
-            }
-        }
-        impl<T: ?Sized + MonitorResource> Copy for IsMonitorResource<'_, T> {}
-
-        let result = Cell::new(true);
-        _ = [IsMonitorResource::<T> {
-            is_monitor_resource: &result,
-            _marker: PhantomData,
-        }]
-        .clone();
-
-        result.get()
     }
 
     pub const fn add_down_callback<T: MonitorResource>(self) -> Self {
@@ -81,13 +43,7 @@ impl ResourceRegistration {
         }
     }
 
-    pub fn initialize(env: Env) {
-        for reg in inventory::iter::<Self>() {
-            reg.register(env);
-        }
-    }
-
-    pub fn register(&self, env: Env) {
+    pub fn register(&self, env: Env) -> Result<(), ResourceInitError> {
         let type_id = (self.get_type_id)();
         let type_name = (self.get_type_name)();
 
@@ -99,16 +55,12 @@ impl ResourceRegistration {
                 ErlNifResourceFlags::ERL_NIF_RT_CREATE,
             )
         };
-        unsafe { traits::register_resource_type(type_id, res.unwrap()) }
-    }
-}
-
-#[macro_export]
-macro_rules! register_resource_type {
-    {$name:ty} => {
-        $crate::codegen_runtime::inventory::submit!(
-            $crate::codegen_runtime::ResourceRegistration::new::<#name>()
-        );
+        if let Some(ptr) = res {
+            unsafe { traits::register_resource_type(type_id, ptr) };
+            Ok(())
+        } else {
+            Err(ResourceInitError)
+        }
     }
 }
 

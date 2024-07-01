@@ -9,7 +9,7 @@ mod monitor;
 mod registration;
 mod traits;
 mod util;
-mod phantom;
+mod init_env;
 
 use std::mem::MaybeUninit;
 
@@ -17,10 +17,10 @@ use super::{Decoder, Error, NifResult, Term};
 
 pub use handle::ResourceArc;
 pub use monitor::Monitor;
-pub use registration::ResourceRegistration;
+pub use registration::Registration;
 use rustler_sys::c_void;
 use traits::ResourceExt;
-pub use traits::{is_monitor_resource, MonitorResource, Resource};
+pub use traits::{MonitorResource, Resource};
 use util::align_alloced_mem_for_struct;
 
 impl<'a> Term<'a> {
@@ -60,12 +60,16 @@ where
     }
 }
 
+/// Indicates that a resource has not been registered successfully
+#[derive(Clone, Copy, Debug)]
+pub struct ResourceInitError;
+
 #[macro_export]
 macro_rules! resource {
     ($struct_name:ty, $env: ident) => {{
         impl $crate::Resource for $struct_name {}
-
-        let tuple =
-            $crate::codegen_runtime::ResourceRegistration::new::<$struct_name>().register($env);
+        if $env.add_resource_type::<$struct_name>().is_err() {
+            return false;
+        }
     }};
 }
