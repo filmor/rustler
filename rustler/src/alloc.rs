@@ -5,9 +5,9 @@ use crate::sys::{c_void, enif_alloc, enif_free};
 const SIZEOF_USIZE: usize = std::mem::size_of::<usize>();
 const MAX_ALIGN: usize = 8;
 
-#[cfg(feature = "allocator")]
-#[global_allocator]
-static ALLOCATOR: EnifAllocator = EnifAllocator;
+// #[cfg(feature = "allocator")]
+// #[global_allocator]
+// static ALLOCATOR: EnifAllocator = EnifAllocator;
 
 /// Allocator implementation that forwards all allocation calls to Erlang's allocator. Allows the
 /// memory usage to be tracked by the BEAM.

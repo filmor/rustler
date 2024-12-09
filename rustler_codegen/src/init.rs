@@ -139,21 +139,47 @@ impl From<InitMacroInput> for proc_macro2::TokenStream {
         quote! {
             #maybe_warning
 
+            fn rustler_internal_get_nif_entry() -> *const rustler::codegen_runtime::DEF_NIF_ENTRY {
+                #inner
+            }
+
             #[cfg(unix)]
             #[no_mangle]
             extern "C" fn nif_init() -> *const rustler::codegen_runtime::DEF_NIF_ENTRY {
                 unsafe { rustler::codegen_runtime::internal_write_symbols() };
-                #inner
+                rustler_internal_get_nif_entry()
             }
 
             #[cfg(windows)]
             #[no_mangle]
-            extern "C" fn nif_init(callbacks: *mut rustler::codegen_runtime::DynNifCallbacks) -> *const rustler::codegen_runtime::DEF_NIF_ENTRY {
-                unsafe {
-                    rustler::codegen_runtime::internal_set_symbols(*callbacks);
-                }
+            extern "C" fn nif_init(callbacks: *mut rustler::codegen_runtime::DynNifCallbacks) ->
+                *const rustler::codegen_runtime::DEF_NIF_ENTRY
+            {
+                unsafe { rustler::codegen_runtime::internal_set_symbols(*callbacks) };
+                rustler_internal_get_nif_entry()
+            }
 
-                #inner
+            #[no_mangle]
+            #[link_name = "_start"]
+            unsafe extern "C" fn rustler_internal_print()
+            {
+                let entry = &*rustler_internal_get_nif_entry();
+                eprintln!("{{");
+                eprintln!("  \"major\": {},", entry.major);
+                eprintln!("  \"minor\": {},", entry.minor);
+                eprintln!("  \"name\": \"{}\",", std::ffi::CStr::from_ptr(entry.name).to_string_lossy());
+                eprintln!("  \"functions\": [");
+
+                let funcs = std::slice::from_raw_parts(entry.funcs, entry.num_of_funcs as usize);
+
+                for func in funcs {
+                    eprintln!("    {{");
+                    eprintln!("      \"name\": \"{}\",", std::ffi::CStr::from_ptr(func.name).to_string_lossy());
+                    eprintln!("      \"arity\": \"{}\",", func.arity);
+                    eprintln!("    }}");
+                }
+                eprintln!("  ]");
+                eprintln!("}}");
             }
         }
     }
