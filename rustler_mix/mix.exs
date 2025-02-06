@@ -12,6 +12,7 @@ defmodule Rustler.Mixfile do
       elixir: "~> 1.11",
       build_embedded: Mix.env() == :prod,
       start_permanent: Mix.env() == :prod,
+      consolidate_protocols: Mix.env() != :dev,
       deps: deps(),
       package: package(),
       docs: docs()
@@ -24,6 +25,7 @@ defmodule Rustler.Mixfile do
 
   defp deps do
     [
+      {:igniter, "~> 0.5", only: [:dev, :test], optional: true},
       {:ex_doc, ">= 0.0.0", only: :dev, runtime: false},
       {:credo, "~> 1.0", only: :dev, runtime: false},
       {:jason, "~> 1.0", runtime: false}
