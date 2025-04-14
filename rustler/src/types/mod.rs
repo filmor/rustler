@@ -47,6 +47,17 @@ pub use self::erlang_option::ErlOption;
 pub trait Encoder {
     fn encode<'a>(&self, env: Env<'a>) -> Term<'a>;
 }
+
+pub trait MoveEncoder {
+    fn move_encode(self, env: Env) -> Term;
+}
+
+impl<T: Encoder> MoveEncoder for T {
+    fn move_encode(self, env: Env) -> Term {
+        self.encode(env)
+    }
+}
+
 pub trait Decoder<'a>: Sized + 'a {
     fn decode(term: Term<'a>) -> NifResult<Self>;
 }
