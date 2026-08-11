@@ -26,7 +26,9 @@ defmodule Rustler.Mixfile do
     [
       {:ex_doc, ">= 0.0.0", only: :dev, runtime: false},
       {:credo, "~> 1.0", only: :dev, runtime: false},
-      {:jason, "~> 1.0", runtime: false}
+      {:jason, "~> 1.0", runtime: false},
+      {:req, "~> 0.5", optional: true, runtime: false},
+      {:toml, "~> 0.7", optional: true, runtime: false}
     ]
   end
 
