@@ -89,6 +89,21 @@ defmodule Rustler do
       end
 
   [target]: https://doc.rust-lang.org/stable/rustc/platform-support.html
+
+  ## Precompiled NIFs
+
+  If you want to distribute precompiled NIF binaries so that end-users do not need
+  a Rust toolchain installed, use `Rustler.Precompiled` instead:
+
+      defmodule MyApp.MyNative do
+        use Rustler.Precompiled,
+          otp_app: :my_app,
+          crate: "my_app_nif",
+          base_url: "https://github.com/me/my_project/releases/download/v0.1.0",
+          version: "0.1.0"
+      end
+
+  See `Rustler.Precompiled` for the full list of options and workflow.
   """
 
   defmacro __using__(opts) do
