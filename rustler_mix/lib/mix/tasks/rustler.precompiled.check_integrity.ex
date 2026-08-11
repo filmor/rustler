@@ -46,19 +46,11 @@ defmodule Mix.Tasks.Rustler.Precompiled.CheckIntegrity do
       )
     end
 
-    {checksum_map, _} = Code.eval_file(checksum_file)
+    checksum_map = checksum_file |> File.read!() |> Jason.decode!()
 
     results =
       for {filename, algo_hash} <- checksum_map do
-        cache_dir_path =
-          System.get_env("RUSTLER_PRECOMPILED_GLOBAL_CACHE_PATH") ||
-            :filename.basedir(
-              :user_cache,
-              Path.join("rustler_precompiled", "precompiled_nifs"),
-              if(System.get_env("MIX_XDG"), do: %{os: :linux}, else: %{})
-            )
-
-        file_path = Path.join(cache_dir_path, filename)
+        file_path = Path.join(Rustler.Precompiled.nif_cache_dir(), filename)
 
         result =
           Rustler.Precompiled.check_integrity_from_map(

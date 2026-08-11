@@ -404,7 +404,7 @@ defmodule Rustler.Precompiled do
         {:ok, result}
       end
     else
-      tar_gz_url = tar_gz_file_url(config.base_url, lib_name_with_ext(cached_tar_gz, lib_name))
+      tar_gz_url = tar_gz_file_url(config.base_url, file_name)
 
       with :ok <- File.mkdir_p(Path.dirname(cached_tar_gz)),
            :ok <- File.mkdir_p(Path.dirname(lib_file)),
@@ -472,22 +472,14 @@ defmodule Rustler.Precompiled do
 
   @doc false
   def checksum_file(nif_module) when is_atom(nif_module) do
-    # Convention: checksum file lives next to mix.exs
-    Path.join(File.cwd!(), "checksum-#{inspect(nif_module)}.exs")
+    Path.join(File.cwd!(), "checksum-#{inspect(nif_module)}.json")
   end
 
   @doc false
   def write_checksum!(nif_module, checksums) when is_list(checksums) do
     file = checksum_file(nif_module)
     pairs = Map.new(checksums)
-
-    lines =
-      pairs
-      |> Enum.sort_by(&elem(&1, 0))
-      |> Enum.map(fn {k, v} -> ~s(  #{inspect(k)} => #{inspect(v)}) end)
-      |> Enum.join(",\n")
-
-    File.write!(file, "%{\n#{lines}\n}\n")
+    File.write!(file, Jason.encode!(pairs, pretty: true))
   end
 
   # ---------------------------------------------------------------------------
@@ -496,7 +488,7 @@ defmodule Rustler.Precompiled do
 
   @doc false
   def metadata_file(nif_module) when is_atom(nif_module) do
-    Path.join(priv_dir(), "precompiled_metadata_#{inspect(nif_module)}.exs")
+    Path.join(priv_dir(), "precompiled_metadata_#{inspect(nif_module)}.json")
   end
 
   defp write_metadata(nif_module, metadata) when is_map(metadata) do
@@ -504,7 +496,9 @@ defmodule Rustler.Precompiled do
 
     case File.mkdir_p(Path.dirname(file)) do
       :ok ->
-        File.write(file, inspect(metadata, limit: :infinity, pretty: true))
+        # Serialise to JSON; atom map keys must be converted to strings first.
+        serialisable = Map.new(metadata, fn {k, v} -> {to_string(k), v} end)
+        File.write(file, Jason.encode!(serialisable))
 
       {:error, reason} ->
         {:error, reason}
@@ -514,12 +508,30 @@ defmodule Rustler.Precompiled do
   defp read_map_from_file(path) do
     case File.read(path) do
       {:ok, content} ->
-        {map, _} = Code.eval_string(content)
-        map
+        case Jason.decode(content) do
+          {:ok, map} -> atomise_keys(map)
+          {:error, _} -> %{}
+        end
 
       _ ->
         %{}
     end
+  end
+
+  # Convert string keys back to atoms for internal use.  Only atoms already
+  # known to the system are accepted (String.to_existing_atom/1) to avoid
+  # atom table exhaustion from untrusted input.
+  defp atomise_keys(map) when is_map(map) do
+    Map.new(map, fn {k, v} ->
+      key =
+        try do
+          String.to_existing_atom(k)
+        rescue
+          ArgumentError -> k
+        end
+
+      {key, v}
+    end)
   end
 
   # ---------------------------------------------------------------------------
@@ -703,18 +715,15 @@ defmodule Rustler.Precompiled do
     end
   end
 
-  defp with_retry(_fun, 0), do: {:error, "max retries exceeded"}
+  defp with_retry(fun, 0), do: fun.()
 
   defp with_retry(fun, attempts) do
     case fun.() do
       {:ok, _} = ok ->
         ok
 
-      {:error, _reason} when attempts > 1 ->
+      {:error, _reason} ->
         with_retry(fun, attempts - 1)
-
-      {:error, reason} ->
-        {:error, reason}
     end
   end
 
@@ -911,6 +920,16 @@ defmodule Rustler.Precompiled do
   # ---------------------------------------------------------------------------
   # Cache directory
   # ---------------------------------------------------------------------------
+
+  @doc """
+  Returns the cache directory used for precompiled NIF tarballs.
+
+  Respects `RUSTLER_PRECOMPILED_GLOBAL_CACHE_PATH` and `MIX_XDG` environment
+  variables.
+  """
+  def nif_cache_dir do
+    cache_dir("precompiled_nifs")
+  end
 
   defp cache_dir(sub_dir) do
     global = System.get_env("RUSTLER_PRECOMPILED_GLOBAL_CACHE_PATH")
