@@ -20,9 +20,16 @@ impl LocalPid {
         LocalPid { c: erl_nif_pid }
     }
 
-    /// Check whether the given process is alive
-    pub fn is_alive(self, env: Env) -> bool {
-        env.is_process_alive(self)
+    /// Check whether the given process is alive using the current
+    /// thread-local environment.
+    pub fn is_alive(self) -> bool {
+        Env::with_current(|env| env.is_process_alive(self))
+    }
+
+    /// Return the calling process's pid using the current thread-local
+    /// environment.
+    pub fn current() -> LocalPid {
+        Env::with_current(|env| env.pid())
     }
 }
 

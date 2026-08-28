@@ -5,6 +5,8 @@ pub struct TestResource {
     test_field: RwLock<i32>,
 }
 
+impl Resource for TestResource {}
+
 struct TestMonitorResourceInner {
     mon: Option<Monitor>,
     down_called: bool,
@@ -42,7 +44,7 @@ pub struct WithBinaries {
 impl Resource for WithBinaries {}
 
 pub fn on_load(env: Env) -> bool {
-    rustler::resource!(TestResource, env)
+    env.register::<TestResource>().is_ok()
         && env.register::<WithBinaries>().is_ok()
         && env.register::<ImmutableResource>().is_ok()
 }

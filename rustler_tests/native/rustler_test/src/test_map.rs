@@ -1,5 +1,4 @@
 use rustler::types::map::MapIterator;
-use rustler::types::tuple::make_tuple;
 use rustler::{Atom, Encoder, Env, Error, ListIterator, NifResult, Term};
 
 #[rustler::nif]
@@ -20,7 +19,7 @@ pub fn map_entries<'a>(env: Env<'a>, iter: MapIterator<'a>) -> NifResult<Vec<Ter
 
     let erlang_pairs: Vec<Term> = vec
         .into_iter()
-        .map(|(key, value)| make_tuple(env, &[key.encode(env), value]))
+        .map(|(key, value)| (key, value).encode(env))
         .collect();
     Ok(erlang_pairs)
 }
@@ -35,7 +34,7 @@ pub fn map_entries_reversed<'a>(env: Env<'a>, iter: MapIterator<'a>) -> NifResul
 
     let erlang_pairs: Vec<Term> = vec
         .into_iter()
-        .map(|(key, value)| make_tuple(env, &[key.encode(env), value]))
+        .map(|(key, value)| (key, value).encode(env))
         .collect();
     Ok(erlang_pairs)
 }
@@ -46,14 +45,17 @@ pub fn map_from_arrays<'a>(
     keys: Vec<Term<'a>>,
     values: Vec<Term<'a>>,
 ) -> NifResult<Term<'a>> {
-    Term::map_from_arrays(env, &keys, &values)
+    Term::map_from_term_arrays_in_env(env, &keys, &values)
 }
 
 #[rustler::nif]
 pub fn map_from_pairs<'a>(env: Env<'a>, pairs: ListIterator<'a>) -> NifResult<Term<'a>> {
     let res: Result<Vec<(Term, Term)>, Error> = pairs.map(|x| x.decode()).collect();
 
-    res.and_then(|v| Term::map_from_pairs(env, &v))
+    res.and_then(|pairs| {
+        let (keys, values): (Vec<_>, Vec<_>) = pairs.into_iter().unzip();
+        Term::map_from_term_arrays_in_env(env, &keys, &values)
+    })
 }
 
 #[rustler::nif]

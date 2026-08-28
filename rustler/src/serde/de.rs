@@ -310,10 +310,10 @@ impl<'de, 'a: 'de> de::Deserializer<'de> for Deserializer<'a> {
         V: Visitor<'de>,
     {
         let tuple = util::validate_tuple(self.term, Some(2))?;
-        let name_term =
-            atoms::str_to_term(&self.term.get_env(), name).or(Err(Error::ExpectedStructName))?;
+        let env = self.term.get_env();
+        let name_term = atoms::str_to_term(&env, name).or(Err(Error::ExpectedStructName))?;
 
-        if tuple[0].ne(&name_term) {
+        if tuple[0] != name_term {
             return Err(Error::InvalidStructName);
         }
 
@@ -353,10 +353,10 @@ impl<'de, 'a: 'de> de::Deserializer<'de> for Deserializer<'a> {
         V: Visitor<'de>,
     {
         let mut tuple = util::validate_tuple(self.term, Some(len + 1))?;
-        let name_term =
-            atoms::str_to_term(&self.term.get_env(), name).or(Err(Error::ExpectedStructName))?;
+        let env = self.term.get_env();
+        let name_term = atoms::str_to_term(&env, name).or(Err(Error::ExpectedStructName))?;
 
-        if tuple[0].ne(&name_term) {
+        if tuple[0] != name_term {
             return Err(Error::InvalidStructName);
         }
 

@@ -21,9 +21,22 @@ pub fn get_tuple(term: Term) -> Result<Vec<Term>, Error> {
 
 /// Convert a vector of terms to an Erlang tuple. (To convert from a Rust tuple to an Erlang tuple,
 /// use `Encoder` instead.)
-pub fn make_tuple<'a>(env: Env<'a>, terms: &[Term]) -> Term<'a> {
+pub fn make_tuple_in_env<'a>(env: Env<'a>, terms: &[Term]) -> Term<'a> {
     let c_terms: Vec<NIF_TERM> = terms.iter().map(|term| term.as_c_arg()).collect();
     unsafe { Term::new(env, tuple::make_tuple(env.as_c_arg(), &c_terms)) }
+}
+
+/// Convert a vector of terms to an Erlang tuple in the current thread-local
+/// environment.
+    pub fn make_tuple<R>(
+    terms: &[Term],
+    closure: impl for<'a> FnOnce(Term<'a>) -> R,
+) -> R {
+    Env::with_current(|env| {
+        let c_terms: Vec<NIF_TERM> = terms.iter().map(|term| term.in_env(env).as_c_arg()).collect();
+            let tuple = unsafe { Term::new(env, tuple::make_tuple(env.as_c_arg(), &c_terms)) };
+        closure(tuple)
+    })
 }
 
 /// Helper macro to emit tuple-like syntax. Wraps its arguments in parentheses, and adds a comma if
@@ -83,3 +96,30 @@ impl_nifencoder_nifdecoder_for_tuple!(0: A, 1: B, 2: C, 3: D);
 impl_nifencoder_nifdecoder_for_tuple!(0: A, 1: B, 2: C, 3: D, 4: E);
 impl_nifencoder_nifdecoder_for_tuple!(0: A, 1: B, 2: C, 3: D, 4: E, 5: F);
 impl_nifencoder_nifdecoder_for_tuple!(0: A, 1: B, 2: C, 3: D, 4: E, 5: F, 6: G);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::OwnedEnv;
+
+    #[test]
+    #[ignore = "requires initialized NIF runtime callbacks"]
+    fn make_tuple_current_builds_tuple() {
+        let env = OwnedEnv::new();
+        let saved_first = env.save(11_i64);
+        let saved_second = env.save("ok");
+
+        env.run(|env| {
+            let first = saved_first.load(env);
+            let second = saved_second.load(env);
+
+            make_tuple(&[first, second], |tuple| {
+                assert!(tuple.is_tuple());
+                let elements = get_tuple(tuple).unwrap();
+                assert_eq!(elements.len(), 2);
+                assert_eq!(elements[0].decode::<i64>().unwrap(), 11);
+                assert_eq!(elements[1].decode::<String>().unwrap(), "ok");
+            });
+        });
+    }
+}

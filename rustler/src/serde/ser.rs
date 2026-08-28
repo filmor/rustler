@@ -2,7 +2,8 @@ use std::io::Write;
 
 use crate::serde::{atoms, error::Error, util};
 use crate::wrapper::list::make_list;
-use crate::{types::tuple, Encoder, Env, OwnedBinary, Term};
+use crate::wrapper::map;
+use crate::{types::tuple, Binary, Encoder, Env, OwnedBinary, Term};
 use serde::ser::{self, Serialize};
 
 #[inline]
@@ -141,7 +142,6 @@ impl<'a> ser::Serializer for Serializer<'a> {
 
     #[inline]
     fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
-        let env = self.env;
         let str_len = v.len();
         let mut bin = match OwnedBinary::new(str_len) {
             Some(bin) => bin,
@@ -150,7 +150,7 @@ impl<'a> ser::Serializer for Serializer<'a> {
         bin.as_mut_slice()
             .write_all(v.as_bytes())
             .expect("memory copy of string failed");
-        Ok(bin.release(env).to_term(env))
+        Ok(Binary::from_owned(bin, self.env).into())
     }
 
     #[inline]
@@ -160,7 +160,7 @@ impl<'a> ser::Serializer for Serializer<'a> {
             .as_mut_slice()
             .write_all(v)
             .or(Err(Error::InvalidBinary))?;
-        Ok(binary.release(self.env).to_term(self.env))
+        Ok(Binary::from_owned(binary, self.env).into())
     }
 
     /// Serializes unit (empty tuple) as `nil`.
@@ -336,7 +336,7 @@ impl<'a> SequenceSerializer<'a> {
 
     #[inline]
     fn to_tuple(&self) -> Result<Term<'a>, Error> {
-        Ok(tuple::make_tuple(self.ser.env, &self.items))
+        Ok(tuple::make_tuple_in_env(self.ser.env, &self.items))
     }
 }
 
@@ -460,17 +460,25 @@ impl<'a> MapSerializer<'a> {
 
     #[inline]
     fn to_map(&self) -> Result<Term<'a>, Error> {
-        Term::map_from_arrays(self.ser.env, &self.keys, &self.values).or(Err(Error::InvalidMap))
+        Term::map_from_term_arrays_in_env(self.ser.env, &self.keys, &self.values)
+            .or(Err(Error::InvalidMap))
     }
 
     #[inline]
     fn to_struct(&self) -> Result<Term<'a>, Error> {
         let struct_atom = atoms::__struct__().to_term(self.ser.env);
         let module_term = self.name.ok_or(Error::ExpectedStructName)?;
-        self.to_map()
-            .or(Err(Error::InvalidStruct))?
-            .map_put(struct_atom, module_term)
-            .or(Err(Error::InvalidStruct))
+        let map = self.to_map().or(Err(Error::InvalidStruct))?;
+        unsafe {
+            map::map_put(
+                self.ser.env.as_c_arg(),
+                map.as_c_arg(),
+                struct_atom.as_c_arg(),
+                module_term.as_c_arg(),
+            )
+            .map(|inner| Term::new(self.ser.env, inner))
+            .ok_or(Error::InvalidStruct)
+        }
     }
 }
 

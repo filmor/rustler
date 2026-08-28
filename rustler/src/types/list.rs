@@ -140,11 +140,13 @@ where
 
 /// ## List terms
 impl<'a> Term<'a> {
-    /// Returns a new empty list.
+    /// Returns a new empty list in the current thread-local environment.
     #[inline]
-    pub fn list_new_empty(env: Env<'a>) -> Term<'a> {
-        let list: &[u8] = &[];
-        list.encode(env)
+    pub fn list_new_empty<R>(closure: impl for<'b> FnOnce(Term<'b>) -> R) -> R {
+        Env::with_current(|env| {
+            let list: &[u8] = &[];
+            closure(list.encode(env))
+        })
     }
 
     /// Returns an iterator over a list term.
@@ -156,60 +158,56 @@ impl<'a> Term<'a> {
         ListIterator::new(self).ok_or(Error::BadArg)
     }
 
-    /// Returns the length of a list term.
-    ///
-    /// Returns None if the term is not a list.
-    ///
-    /// ### Elixir equivalent
-    /// ```elixir
-    /// length(self_term)
-    /// ```
+    /// Returns the length of a list term using the current thread-local
+    /// environment.
     #[inline]
     pub fn list_length(self) -> NifResult<usize> {
-        unsafe { list::get_list_length(self.get_env().as_c_arg(), self.as_c_arg()) }
-            .ok_or(Error::BadArg)
+        Env::with_current(|env| unsafe {
+            list::get_list_length(env.as_c_arg(), self.in_env(env).as_c_arg()).ok_or(Error::BadArg)
+        })
     }
 
-    /// Unpacks a single cell at the head of a list term,
-    /// and returns the result as a tuple of (head, tail).
-    ///
-    /// Returns None if the term is not a list.
-    ///
-    /// ### Elixir equivalent
-    /// ```elixir
-    /// [head, tail] = self_term
-    /// {head, tail}
-    /// ```
+    /// Unpacks a single cell at the head of a list term using the current
+    /// thread-local environment.
     #[inline]
-    pub fn list_get_cell(self) -> NifResult<(Term<'a>, Term<'a>)> {
-        let env = self.get_env();
-        unsafe {
-            list::get_list_cell(env.as_c_arg(), self.as_c_arg())
-                .map(|(t1, t2)| (Term::new(env, t1), Term::new(env, t2)))
-                .ok_or(Error::BadArg)
-        }
+    pub fn list_get_cell<R>(
+        self,
+        closure: impl for<'b> FnOnce(NifResult<(Term<'b>, Term<'b>)>) -> R,
+    ) -> R {
+        Env::with_current(|env| unsafe {
+            match list::get_list_cell(env.as_c_arg(), self.in_env(env).as_c_arg()) {
+                Some((head, tail)) => closure(Ok((Term::new(env, head), Term::new(env, tail)))),
+                None => closure(Err(Error::BadArg)),
+            }
+        })
     }
 
-    /// Makes a copy of the self list term and reverses it.
-    ///
-    /// Returns Err(Error::BadArg) if the term is not a list.
+    /// Makes a copy of the self list term and reverses it using the current
+    /// thread-local environment.
     #[inline]
-    pub fn list_reverse(self) -> NifResult<Term<'a>> {
-        let env = self.get_env();
-        unsafe {
-            list::make_reverse_list(env.as_c_arg(), self.as_c_arg())
-                .map(|t| Term::new(env, t))
-                .ok_or(Error::BadArg)
-        }
+    pub fn list_reverse<R>(self, closure: impl for<'b> FnOnce(NifResult<Term<'b>>) -> R) -> R {
+        Env::with_current(|env| unsafe {
+            match list::make_reverse_list(env.as_c_arg(), self.in_env(env).as_c_arg()) {
+                Some(term) => closure(Ok(Term::new(env, term))),
+                None => closure(Err(Error::BadArg)),
+            }
+        })
     }
 
-    /// Adds `head` in a list cell with `self` as tail.
-    pub fn list_prepend(self, head: impl Encoder) -> Term<'a> {
-        let env = self.get_env();
-        let head = head.encode(env);
-        unsafe {
-            let term = list::make_list_cell(env.as_c_arg(), head.as_c_arg(), self.as_c_arg());
-            Term::new(env, term)
-        }
+    /// Adds `head` in a list cell with `self` as tail using the current
+    /// thread-local environment.
+    #[inline]
+    pub fn list_prepend<R>(
+        self,
+        head: impl Encoder,
+        closure: impl for<'b> FnOnce(Term<'b>) -> R,
+    ) -> R {
+        Env::with_current(|env| {
+            let head = head.encode(env);
+            unsafe {
+                let term = list::make_list_cell(env.as_c_arg(), head.as_c_arg(), self.in_env(env).as_c_arg());
+                closure(Term::new(env, term))
+            }
+        })
     }
 }

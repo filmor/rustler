@@ -39,8 +39,8 @@ mod term;
 
 pub use crate::term::Term;
 pub use crate::types::{
-    Atom, Binary, Decoder, Encoder, ErlOption, ListIterator, LocalPid, MapIterator, NewBinary,
-    OwnedBinary, Reference,
+    encode_current, Atom, Binary, Decoder, Encoder, ErlOption, ListIterator, LocalPid,
+    MapIterator, NewBinary, OwnedBinary, Reference,
 };
 
 #[cfg(feature = "big_integer")]

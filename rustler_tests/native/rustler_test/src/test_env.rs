@@ -49,7 +49,9 @@ pub fn sublists<'a>(env: Env<'a>, list: Term<'a>) -> NifResult<Atom> {
     // terms in a form that doesn't have a lifetime parameter.
     let saved_reversed_list = owned_env.run(|env| -> NifResult<SavedTerm> {
         let list_arg = list.in_env(env);
-        Ok(owned_env.save(list_arg.list_reverse()?))
+        let mut reversed_terms: Vec<Term> = list_arg.decode::<ListIterator>()?.collect();
+        reversed_terms.reverse();
+        Ok(owned_env.save(reversed_terms.encode(env)))
     })?;
 
     // Start the worker thread. This `move` closure takes ownership of both
@@ -62,17 +64,20 @@ pub fn sublists<'a>(env: Env<'a>, list: Term<'a>) -> NifResult<Atom> {
                 let reversed_list = saved_reversed_list.load(env);
                 let iter: ListIterator = reversed_list.decode()?;
 
-                let empty_list = Vec::<Term>::new().encode(env);
-                let mut all_sublists = vec![empty_list];
+                let mut all_sublists = vec![Vec::<Term>::new()];
 
                 for element in iter {
                     for i in 0..all_sublists.len() {
-                        let new_list = all_sublists[i].list_prepend(element);
+                        let mut new_list = Vec::with_capacity(all_sublists[i].len() + 1);
+                        new_list.push(element);
+                        new_list.extend(all_sublists[i].iter().copied());
                         all_sublists.push(new_list);
                     }
                 }
 
-                Ok(all_sublists.encode(env))
+                let encoded_sublists: Vec<Term> =
+                    all_sublists.into_iter().map(|sublist| sublist.encode(env)).collect();
+                Ok(encoded_sublists.encode(env))
             })();
 
             match result {

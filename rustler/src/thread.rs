@@ -1,6 +1,6 @@
 use crate::env::OwnedEnv;
 use crate::sys::enif_thread_type;
-use crate::{Atom, Encoder, Env, Term};
+use crate::{Atom, Encoder, Env, LocalPid, Term};
 use std::panic;
 use std::thread;
 
@@ -34,12 +34,24 @@ impl JobSpawner for ThreadSpawner {
 /// Note that the thread creates a new `Env` and passes it to the closure, so the closure
 /// runs under a separate environment, not under `env`.
 ///
-pub fn spawn<'a, S, F>(env: Env<'a>, thread_fn: F)
+/// Like `spawn`, but derives the recipient from the current thread-local
+/// environment.
+///
+/// This is intended to be called while running in a NIF/callback context
+/// where a process-bound or callback environment is current.
+pub fn spawn<S, F>(thread_fn: F)
 where
     F: for<'b> FnOnce(Env<'b>) -> Term<'b> + Send + panic::UnwindSafe + 'static,
     S: JobSpawner,
 {
-    let pid = env.pid();
+    spawn_to_pid::<S, F>(LocalPid::current(), thread_fn);
+}
+
+fn spawn_to_pid<S, F>(pid: LocalPid, thread_fn: F)
+where
+    F: for<'b> FnOnce(Env<'b>) -> Term<'b> + Send + panic::UnwindSafe + 'static,
+    S: JobSpawner,
+{
     S::spawn(move || {
         let _ = OwnedEnv::new().send_and_clear(&pid, |env| {
             match panic::catch_unwind(|| thread_fn(env)) {

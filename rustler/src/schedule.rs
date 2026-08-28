@@ -8,7 +8,11 @@ pub enum SchedulerFlags {
     DirtyIo = ErlNifTaskFlags::ERL_NIF_DIRTY_JOB_IO_BOUND as isize,
 }
 
-pub fn consume_timeslice(env: Env, percent: i32) -> bool {
+pub(crate) fn consume_timeslice_in_env(env: Env, percent: i32) -> bool {
     let success = unsafe { enif_consume_timeslice(env.as_c_arg(), percent) };
     success == 1
+}
+
+pub fn consume_timeslice(percent: i32) -> bool {
+    Env::with_current(|env| consume_timeslice_in_env(env, percent))
 }

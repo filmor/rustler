@@ -29,6 +29,11 @@ impl Env<'_> {
     pub fn register<T: Resource>(&self) -> Result<(), ResourceInitError> {
         Registration::new::<T>().register(*self)
     }
+
+    /// Register a resource type in the current thread-local environment.
+    pub fn register_current<T: Resource>() -> Result<(), ResourceInitError> {
+        Env::with_current(|env| Registration::new::<T>().register(env))
+    }
 }
 
 /// Resource registration
@@ -46,6 +51,12 @@ impl Registration {
         }
 
         Ok(())
+    }
+
+    /// Register all resource types that have been submitted to the inventory
+    /// in the current thread-local environment.
+    pub fn register_all_collected_current() -> Result<(), ResourceInitError> {
+        Env::with_current(Self::register_all_collected)
     }
 
     /// Generate a new (pending) resource type registration.
@@ -156,6 +167,12 @@ impl Registration {
             Err(ResourceInitError)
         }
     }
+
+    /// Try to register this resource type in the current thread-local
+    /// environment.
+    pub fn register_current(&self) -> Result<(), ResourceInitError> {
+        Env::with_current(|env| self.register(env))
+    }
 }
 
 /// Drop a T that lives in an Erlang resource
@@ -164,6 +181,7 @@ where
     T: Resource,
 {
     let env = Env::new_internal(&_env, _env, EnvKind::Callback);
+    let _thread_local_env_guard = env.push_thread_local();
     let aligned = align_alloced_mem_for_struct::<T>(handle);
     // Destructor takes ownership, thus the resource object will be dropped after the function has
     // run.
@@ -180,6 +198,7 @@ unsafe extern "C" fn resource_down<T: Resource>(
     mon: *const ErlNifMonitor,
 ) {
     let env = Env::new_internal(&env, env, EnvKind::Callback);
+    let _thread_local_env_guard = env.push_thread_local();
     let aligned = align_alloced_mem_for_struct::<T>(obj);
     let res = &*(aligned as *const T);
     let pid = LocalPid::from_c_arg(*pid);
@@ -195,6 +214,7 @@ unsafe extern "C" fn resource_dyncall<T: Resource>(
     call_data: *mut c_void,
 ) {
     let env = Env::new_internal(&env, env, EnvKind::Callback);
+    let _thread_local_env_guard = env.push_thread_local();
     let aligned = align_alloced_mem_for_struct::<T>(obj);
     let res = &*(aligned as *const T);
 

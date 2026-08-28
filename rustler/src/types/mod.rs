@@ -51,6 +51,15 @@ pub trait Decoder<'a>: Sized + 'a {
     fn decode(term: Term<'a>) -> NifResult<Self>;
 }
 
+/// Encodes a value in the current thread-local environment.
+#[inline]
+pub fn encode_current<T, R>(value: &T, closure: impl for<'a> FnOnce(Term<'a>) -> R) -> R
+where
+    T: Encoder + ?Sized,
+{
+    Env::with_current(|env| closure(value.encode(env)))
+}
+
 impl Encoder for Term<'_> {
     fn encode<'b>(&self, env: Env<'b>) -> Term<'b> {
         self.in_env(env)
@@ -180,6 +189,6 @@ where
 {
     fn encode<'c>(&self, env: Env<'c>) -> Term<'c> {
         let (keys, values): (Vec<_>, Vec<_>) = self.iter().unzip();
-        Term::map_from_arrays(env, &keys, &values).unwrap()
+        crate::types::map::map_from_arrays_in_env(env, &keys, &values).unwrap()
     }
 }

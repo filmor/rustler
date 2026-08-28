@@ -107,17 +107,15 @@ fn gen_decoder(ctx: &Context, fields: &[&Field], atoms_module_name: &Ident) -> T
                 where
                     T: rustler::Decoder<'a>,
                 {
-                    use rustler::Encoder;
-                    match ::rustler::Decoder::decode(term.map_get(&field)?) {
-                        Err(_) => Err(::rustler::Error::RaiseTerm(Box::new(format!(
-                                        "Could not decode field :{:?} on %{}{{}}",
-                                        field, #struct_name_str
-                        )))),
-                        Ok(value) => Ok(value),
-                    }
+                    ::rustler::Decoder::decode(term.map_get_in_env(&field)?)
+                        .map_err(|_| ::rustler::Error::RaiseTerm(Box::new(format!(
+                            "Could not decode field :{:?} on %{}{{}}",
+                            field, #struct_name_str
+                        ))))
                 }
 
-            let module: ::rustler::types::atom::Atom = term.map_get(atom_struct())?.decode()?;
+            let module: ::rustler::types::atom::Atom =
+                term.map_get_in_env(atom_struct())?.decode()?;
             if module != atom_module() {
                 return Err(::rustler::Error::RaiseAtom("invalid_struct"));
             }
@@ -159,7 +157,7 @@ fn gen_encoder(
         ctx,
         quote! {
             use #atoms_module_name::*;
-            ::rustler::Term::map_from_term_arrays(env, &[#(#keys),*], &[#(#values),*]).unwrap()
+            ::rustler::Term::map_from_term_arrays_in_env(env, &[#(#keys),*], &[#(#values),*]).unwrap()
         },
     )
 }

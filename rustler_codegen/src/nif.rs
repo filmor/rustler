@@ -68,6 +68,7 @@ pub fn transcoder_decorator(nif_attributes: NifAttributes, fun: syn::ItemFn) -> 
                     ) -> rustler::codegen_runtime::NIF_TERM {
                         let lifetime = ();
                         let env = rustler::Env::new(&lifetime, nif_env);
+                        let _thread_local_env_guard = env.push_thread_local();
 
                         let terms = std::slice::from_raw_parts(argv, argc as usize)
                             .iter()

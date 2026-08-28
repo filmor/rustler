@@ -8,19 +8,34 @@
 //! `#[module = "Elixir.TheStructModule"]`.
 
 use super::atom::{self, Atom};
-use super::map::map_new;
-use crate::{Env, NifResult, Term};
+use crate::wrapper::map;
+use crate::{NifResult, Term};
 
 pub fn get_ex_struct_name(map: Term) -> NifResult<Atom> {
     // In an Elixir struct the value in the __struct__ field is always an atom.
-    map.map_get(atom::__struct__()).and_then(Atom::from_term)
+    map.map_get(atom::__struct__(), |res| res.and_then(Atom::from_term))
 }
 
-pub fn make_ex_struct<'a>(env: Env<'a>, struct_module: &str) -> NifResult<Term<'a>> {
-    let map = map_new(env);
-
-    let struct_atom = atom::__struct__();
-    let module_atom = Atom::from_str(env, struct_module)?;
-
-    map.map_put(struct_atom, module_atom)
+pub fn make_ex_struct<R>(
+    struct_module: &str,
+    closure: impl for<'a> FnOnce(NifResult<Term<'a>>) -> R,
+) -> R {
+    super::map::map_new(|map| {
+        let struct_atom = atom::__struct__();
+        let module_atom = Atom::from_str(map.get_env(), struct_module);
+        let map = module_atom.and_then(|module_atom| {
+            let env = map.get_env();
+            unsafe {
+                map::map_put(
+                    env.as_c_arg(),
+                    map.as_c_arg(),
+                    struct_atom.as_c_arg(),
+                    module_atom.as_c_arg(),
+                )
+                .map(|inner| Term::new(env, inner))
+                .ok_or(crate::Error::BadArg)
+            }
+        });
+        closure(map)
+    })
 }

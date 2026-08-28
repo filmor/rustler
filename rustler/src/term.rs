@@ -62,6 +62,15 @@ impl<'a> Term<'a> {
         }
     }
 
+    /// Returns this term in the current thread-local environment.
+    ///
+    /// If this term belongs to a different environment, it is copied into the
+    /// current local one.
+    #[inline]
+    pub fn in_current_env<R>(&self, closure: impl for<'b> FnOnce(Term<'b>) -> R) -> R {
+        Env::with_current(|env| closure(self.in_env(env)))
+    }
+
     /// Decodes the Term into type T.
     ///
     /// This should be used as the primary method of extracting the value from a Term.
@@ -165,3 +174,26 @@ impl Hash for Term<'_> {
 
 unsafe impl Sync for Term<'_> {}
 unsafe impl Send for Term<'_> {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::OwnedEnv;
+
+    #[test]
+    #[ignore = "requires initialized NIF runtime callbacks"]
+    fn in_current_env_copies_term_when_env_differs() {
+        let source_env = OwnedEnv::new();
+        let saved = source_env.save("copied");
+
+        Env::with_current(|current_env| {
+            source_env.run(|source| {
+                let term = saved.load(source);
+                term.in_current_env(|in_current| {
+                    assert_eq!(in_current.decode::<String>().unwrap(), "copied");
+                    assert_eq!(in_current.get_env().as_c_arg(), current_env.as_c_arg());
+                });
+            });
+        });
+    }
+}

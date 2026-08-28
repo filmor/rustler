@@ -8,13 +8,20 @@ use crate::sys::enif_make_ref;
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub struct Reference<'a>(Term<'a>);
 
+/// Create a new reference in the current thread-local environment.
+pub fn make_ref<R>(closure: impl for<'a> FnOnce(Reference<'a>) -> R) -> R {
+    Env::with_current(|env| closure(env.make_ref()))
+}
+
 impl Reference<'_> {
-    /// Returns a representation of self in the given Env.
-    ///
-    /// If the term is already is in the provided env, it will be directly returned. Otherwise
-    /// the term will be copied over.
-    pub fn in_env<'b>(&self, env: Env<'b>) -> Reference<'b> {
-        Reference(self.0.in_env(env))
+    /// Returns a representation of self in the current thread-local environment.
+    pub fn in_env<R>(&self, closure: impl for<'b> FnOnce(Reference<'b>) -> R) -> R {
+        self.0.in_current_env(|term| closure(Reference(term)))
+    }
+
+    /// Create a new reference in the current thread-local environment.
+    pub fn current<R>(closure: impl for<'b> FnOnce(Reference<'b>) -> R) -> R {
+        make_ref(closure)
     }
 }
 

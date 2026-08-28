@@ -16,7 +16,9 @@ pub fn threaded_fac(env: Env, n: u64) -> Atom {
     // Do nothing and suppress panic message. From https://stackoverflow.com/a/35559417
     panic::set_hook(Box::new(|_info| {}));
 
-    thread::spawn::<thread::ThreadSpawner, _>(env, move |thread_env| {
+    let _ = env;
+
+    thread::spawn::<thread::ThreadSpawner, _>(move |thread_env| {
         let result = (1..=n).fold(1, mul);
         result.encode(thread_env)
     });
@@ -28,7 +30,8 @@ pub fn threaded_fac(env: Env, n: u64) -> Atom {
 pub fn threaded_sleep(env: Env, msec: u64) -> Atom {
     let q = msec / 1000;
     let r = (msec % 1000) as u32;
-    thread::spawn::<thread::ThreadSpawner, _>(env, move |thread_env| {
+    let _ = env;
+    thread::spawn::<thread::ThreadSpawner, _>(move |thread_env| {
         std::thread::sleep(std::time::Duration::new(q, r * 1_000_000));
         msec.encode(thread_env)
     });

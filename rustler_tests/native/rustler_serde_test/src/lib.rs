@@ -1,3 +1,5 @@
+#![allow(unexpected_cfgs)]
+
 //! Library implementing tests to be called from ExUnit.
 //!
 //! See `run_ser_test` and `run_de_test` for details about how to use `serde_rustler::Serializer` and `serde_rustler::Deserializer`.
@@ -11,7 +13,7 @@ mod types;
 
 use crate::types::Animal;
 use rustler::serde::{atoms, Deserializer, Error, Serializer};
-use rustler::{types::tuple, Encoder, Env, NifResult, SerdeTerm, Term};
+use rustler::{Encoder, Env, NifResult, SerdeTerm, Term};
 
 init!("Elixir.SerdeRustlerTests");
 
@@ -56,10 +58,10 @@ where
 
 fn ok_tuple<'a>(env: Env<'a>, term: Term<'a>) -> Term<'a> {
     let ok_atom_term = atoms::ok().encode(env);
-    tuple::make_tuple(env, &[ok_atom_term, term])
+    (ok_atom_term, term).encode(env)
 }
 
 fn error_tuple<'a>(env: Env<'a>, reason_term: Term<'a>) -> Term<'a> {
     let err_atom_term = atoms::error().encode(env);
-    tuple::make_tuple(env, &[err_atom_term, reason_term])
+    (err_atom_term, reason_term).encode(env)
 }

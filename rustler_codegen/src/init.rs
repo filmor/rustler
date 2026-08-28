@@ -104,9 +104,15 @@ impl From<InitMacroInput> for proc_macro2::TokenStream {
                     ) -> rustler::codegen_runtime::c_int {
                         unsafe {
                             let mut env = rustler::Env::new_init_env(&env, env);
+                            let _thread_local_env_guard = env.push_thread_local();
                             let load_info = rustler::Term::new(env, load_info);
 
-                            if !rustler::codegen_runtime::ResourceRegistration::register_all_collected(env).is_ok() {
+                            #[cfg(feature = "nif_version_2_17")]
+                            if !rustler::codegen_runtime::register_on_unload_thread_cleanup(env.as_c_arg()) {
+                                return 1;
+                            }
+
+                            if !rustler::codegen_runtime::ResourceRegistration::register_all_collected_current().is_ok() {
                                 return 1;
                             }
 

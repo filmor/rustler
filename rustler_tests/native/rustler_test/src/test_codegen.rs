@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use rustler::types::truthy::Truthy;
 use rustler::{
     NifException, NifMap, NifRecord, NifStruct, NifTaggedEnum, NifTuple, NifUnitEnum,

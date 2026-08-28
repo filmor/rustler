@@ -11,6 +11,8 @@ pub use inventory;
 
 // Re-export of resource registration
 pub use crate::resource::Registration as ResourceRegistration;
+#[cfg(feature = "nif_version_2_17")]
+pub use crate::env::register_on_unload_thread_cleanup;
 
 // Names used by the `rustler::init!` macro or other generated code.
 pub use crate::wrapper::exception::raise_exception;

@@ -343,4 +343,9 @@ pub enum ErlNifOption {
     // from https://github.com/erlang/otp/blob/1b3c6214d4bf359f7e5c143bef5c5ad9c90c5536/erts/emulator/beam/erl_nif.h#L333
     ERL_NIF_OPT_DELAY_HALT = 1,
     ERL_NIF_OPT_ON_HALT = 2,
+    ERL_NIF_OPT_ON_UNLOAD_THREAD = 3,
 }
+
+/// See [ErlNifOnUnloadThreadCallback](http://www.erlang.org/doc/man/erl_nif.html#ErlNifOnUnloadThreadCallback) in the Erlang docs.
+#[cfg(feature = "nif_version_2_17")]
+pub type ErlNifOnUnloadThreadCallback = unsafe extern "C" fn(priv_data: *mut c_void) -> ();

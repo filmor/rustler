@@ -131,7 +131,7 @@ fn gen_encoder(ctx: &Context, fields: &[&Field]) -> TokenStream {
         quote! {
             use ::rustler::Encoder;
             let arr = #field_list_ast;
-            ::rustler::types::tuple::make_tuple(env, &arr)
+            ::rustler::types::tuple::make_tuple_in_env(env, &arr)
         },
     )
 }

@@ -80,13 +80,15 @@ pub fn validate_struct<'a>(term: &Term<'a>, name: Option<&str>) -> Result<Term<'
         return Err(Error::ExpectedMap);
     }
 
-    let __struct__ = atoms::__struct__().to_term(term.get_env());
-    let struct_name_term = term.map_get(__struct__).or(Err(Error::ExpectedStruct))?;
+    let env = term.get_env();
+    let __struct__ = atoms::__struct__().to_term(env);
+    let struct_name_term = crate::types::map::map_get(env, *term, __struct__)
+        .or(Err(Error::ExpectedStruct))?;
 
     match name {
         Some(name) => {
             let name_term =
-                atoms::str_to_term(&term.get_env(), name).or(Err(Error::InvalidStructName))?;
+                atoms::str_to_term(&env, name).or(Err(Error::InvalidStructName))?;
 
             if struct_name_term.eq(&name_term) {
                 Ok(struct_name_term)

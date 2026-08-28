@@ -1,3 +1,5 @@
+#![allow(unexpected_cfgs)]
+
 use rustler::{Env, LocalPid, Resource, ResourceArc};
 
 #[repr(C)]

@@ -1,7 +1,9 @@
-use rustler::Atom;
-use std::{ffi::OsStr, fs::read_to_string, path::PathBuf};
+#![allow(unexpected_cfgs)]
 
-static mut DATASET: Option<Box<str>> = None;
+use rustler::Atom;
+use std::{ffi::OsStr, fs::read_to_string, path::PathBuf, sync::OnceLock};
+
+static DATASET: OnceLock<Box<str>> = OnceLock::new();
 
 fn initialize_dataset(mut asset_path: PathBuf) {
     asset_path.push("demo_dataset.txt");
@@ -10,27 +12,26 @@ fn initialize_dataset(mut asset_path: PathBuf) {
     // eprintln!("Loading dataset from {:?}.", &asset_path);
 
     let data = read_to_string(asset_path).unwrap().into_boxed_str();
-    let data = Some(data);
-
-    // Safety: assumes that this function is being called once when
-    // dynamically loading this library.
-    // `load()` is being called exactly once and OTP will not allow any other function call
-    // before this function returns
-    unsafe { DATASET = data };
+    assert!(DATASET.set(data).is_ok(), "dataset already initialized");
 }
 
 #[rustler::nif]
 fn get_dataset() -> &'static str {
-    // Safety: see `initialize_dataset()`
-    unsafe { DATASET.as_ref() }.expect("Dataset is not initialized")
+    DATASET
+        .get()
+        .map(|dataset| dataset.as_ref())
+        .expect("Dataset is not initialized")
 }
 
 fn load<'a>(env: rustler::Env<'a>, args: rustler::Term<'a>) -> bool {
-    let key = Atom::from_str(env, "priv_path").unwrap().to_term(env);
-    let priv_path = args.map_get(key).unwrap();
-    let priv_path = priv_path.into_binary().unwrap().as_slice();
+    let key = Atom::from_str(env, "priv_path").unwrap();
+    let priv_path = args
+        .map_get(key, |res| {
+            res.map(|term| term.into_binary().unwrap().as_slice().to_owned())
+        })
+        .unwrap();
 
-    let asset_path = build_path_buf(priv_path);
+    let asset_path = build_path_buf(&priv_path);
 
     initialize_dataset(asset_path);
 

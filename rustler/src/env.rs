@@ -3,6 +3,7 @@ use crate::thread::is_scheduler_thread;
 use crate::types::LocalPid;
 use crate::wrapper::{NIF_ENV, NIF_TERM};
 use crate::{Encoder, Term};
+use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::ptr;
 use std::sync::{Arc, Weak};
@@ -46,6 +47,101 @@ impl<'b> PartialEq<Env<'b>> for Env<'_> {
 #[derive(Clone, Copy, Debug)]
 pub struct SendError;
 
+#[derive(Default)]
+struct ThreadLocalEnvState {
+    current_env_stack: Vec<(NIF_ENV, EnvKind)>,
+    fallback_process_independent_env: Option<NIF_ENV>,
+}
+
+impl ThreadLocalEnvState {
+    fn ensure_fallback_process_independent_env(&mut self) -> NIF_ENV {
+        if let Some(env) = self.fallback_process_independent_env {
+            env
+        } else {
+            let env = unsafe { enif_alloc_env() };
+            self.fallback_process_independent_env = Some(env);
+            env
+        }
+    }
+}
+
+impl Drop for ThreadLocalEnvState {
+    fn drop(&mut self) {
+        if let Some(env) = self.fallback_process_independent_env.take() {
+            unsafe {
+                enif_free_env(env);
+            }
+        }
+    }
+}
+
+thread_local! {
+    static THREAD_LOCAL_ENV_STATE: RefCell<ThreadLocalEnvState> = RefCell::new(ThreadLocalEnvState::default());
+}
+
+#[cfg(feature = "nif_version_2_17")]
+unsafe extern "C" fn thread_local_unload_cleanup_callback(_priv_data: *mut std::ffi::c_void) {
+    THREAD_LOCAL_ENV_STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        if let Some(env) = state.fallback_process_independent_env.take() {
+            unsafe {
+                enif_free_env(env);
+            }
+        }
+        state.current_env_stack.clear();
+    });
+}
+
+#[cfg(feature = "nif_version_2_17")]
+pub fn register_on_unload_thread_cleanup(env: NIF_ENV) -> bool {
+    // Safety: called from NIF load callback with callback environment.
+    unsafe {
+        crate::sys::enif_set_option!(
+            env,
+            crate::sys::ErlNifOption::ERL_NIF_OPT_ON_UNLOAD_THREAD,
+            thread_local_unload_cleanup_callback as crate::sys::ErlNifOnUnloadThreadCallback
+        ) == 0
+    }
+}
+
+/// Guard used to scope updates to the current thread-local environment.
+#[derive(Debug)]
+pub struct CurrentEnvGuard {
+    raw_env: NIF_ENV,
+    env_kind: EnvKind,
+}
+
+impl CurrentEnvGuard {
+    fn push(raw_env: NIF_ENV, env_kind: EnvKind) -> Self {
+        THREAD_LOCAL_ENV_STATE.with(|state| {
+            state
+                .borrow_mut()
+                .current_env_stack
+                .push((raw_env, env_kind));
+        });
+
+        Self { raw_env, env_kind }
+    }
+}
+
+impl Drop for CurrentEnvGuard {
+    fn drop(&mut self) {
+        THREAD_LOCAL_ENV_STATE.with(|state| {
+            let mut state = state.borrow_mut();
+            match state.current_env_stack.pop() {
+                Some((env, kind)) if env == self.raw_env && kind == self.env_kind => {}
+                Some((env, kind)) => {
+                    panic!(
+                        "mismatched thread-local env guard drop order: expected ({:?}, {:?}), got ({:?}, {:?})",
+                        self.raw_env, self.env_kind, env, kind
+                    );
+                }
+                None => panic!("thread-local env guard stack was empty"),
+            }
+        });
+    }
+}
+
 impl<'a> Env<'a> {
     #[doc(hidden)]
     #[inline]
@@ -79,6 +175,43 @@ impl<'a> Env<'a> {
     #[inline]
     pub unsafe fn new_init_env<T>(_lifetime_marker: &'a T, env: NIF_ENV) -> Env<'a> {
         Self::new_internal(_lifetime_marker, env, EnvKind::Init)
+    }
+
+    /// Set this `Env` as the current thread-local environment for the duration of the guard.
+    #[doc(hidden)]
+    #[inline]
+    pub fn push_thread_local(self) -> CurrentEnvGuard {
+        CurrentEnvGuard::push(self.env, self.kind)
+    }
+
+    /// Runs the closure in the current thread-local `Env`.
+    ///
+    /// If no current thread-local env has been set yet in this thread,
+    /// a process-independent environment is created, assigned, and reused.
+    #[inline]
+    pub fn with_current<R>(closure: impl for<'env> FnOnce(Env<'env>) -> R) -> R {
+        let maybe_current = THREAD_LOCAL_ENV_STATE.with(|state| {
+            state.borrow().current_env_stack.last().copied()
+        });
+
+        if let Some((raw_env, kind)) = maybe_current {
+            let lifetime = ();
+            let env = unsafe { Env::new_internal(&lifetime, raw_env, kind) };
+            return closure(env);
+        }
+
+        let raw_env = THREAD_LOCAL_ENV_STATE.with(|state| {
+            state
+                .borrow_mut()
+                .ensure_fallback_process_independent_env()
+        });
+
+        let guard = CurrentEnvGuard::push(raw_env, EnvKind::ProcessIndependent);
+        let lifetime = ();
+        let env = unsafe { Env::new_internal(&lifetime, raw_env, EnvKind::ProcessIndependent) };
+        let result = closure(env);
+        drop(guard);
+        result
     }
 
     pub fn as_c_arg(self) -> NIF_ENV {
@@ -163,6 +296,12 @@ impl<'a> Env<'a> {
             let pid = LocalPid::from_c_arg(enif_pid);
             Some(pid)
         }
+    }
+
+    /// Attempts to find the PID of a process registered by `name_or_pid` in
+    /// the current thread-local environment.
+    pub fn whereis_pid_current(name_or_pid: impl Encoder) -> Option<LocalPid> {
+        Self::with_current(|env| env.whereis_pid(name_or_pid))
     }
 
     /// Decodes binary data to a term.
@@ -360,5 +499,41 @@ impl SavedTerm {
 impl Default for OwnedEnv {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[ignore = "requires initialized NIF runtime callbacks"]
+    fn with_current_uses_process_independent_fallback() {
+        Env::with_current(|env| {
+            assert_eq!(env.kind, EnvKind::ProcessIndependent);
+            assert!(!env.as_c_arg().is_null());
+        });
+    }
+
+    #[test]
+    #[ignore = "requires initialized NIF runtime callbacks"]
+    fn with_current_reuses_fallback_env_on_same_thread() {
+        let first = Env::with_current(|env| env.as_c_arg());
+        let second = Env::with_current(|env| env.as_c_arg());
+        assert_eq!(first, second);
+    }
+
+    #[test]
+    #[ignore = "requires initialized NIF runtime callbacks"]
+    fn pushed_thread_local_env_is_visible_as_current() {
+        let owned_env = OwnedEnv::new();
+
+        owned_env.run(|env| {
+            let _guard = env.push_thread_local();
+            Env::with_current(|current| {
+                assert_eq!(current.as_c_arg(), env.as_c_arg());
+                assert_eq!(current.kind, env.kind);
+            });
+        });
     }
 }

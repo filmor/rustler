@@ -129,14 +129,11 @@ fn gen_decoder(ctx: &Context, variants: &[&Variant], atoms_module_name: &Ident) 
                 where
                     T: ::rustler::Decoder<'a>,
             {
-                use ::rustler::Encoder;
-                match ::rustler::Decoder::decode(term.map_get(&field)?) {
-                    Err(_) => Err(::rustler::Error::RaiseTerm(Box::new(format!(
-                                    "Could not decode field :{:?} on %{{}}",
-                                    field
-                    )))),
-                    Ok(value) => Ok(value),
-                }
+                ::rustler::Decoder::decode(term.map_get_in_env(&field)?)
+                    .map_err(|_| ::rustler::Error::RaiseTerm(Box::new(format!(
+                        "Could not decode field :{:?} on %{{}}",
+                        field
+                    ))))
             }
 
             if let Ok(unit) = ::rustler::types::atom::Atom::from_term(term) {
@@ -332,9 +329,9 @@ fn gen_named_encoder(
         #enum_name :: #variant_ident{
             #(#field_decls)*
         } => {
-            let map = ::rustler::Term::map_from_term_arrays(env, &[#(#keys),*], &[#(#values),*])
+            let map = ::rustler::Term::map_from_term_arrays_in_env(env, &[#(#keys),*], &[#(#values),*])
                 .expect("Failed to create map");
-            ::rustler::types::tuple::make_tuple(env, &[::rustler::Encoder::encode(&#atom_fn(), env), map])
+            ::rustler::types::tuple::make_tuple_in_env(env, &[::rustler::Encoder::encode(&#atom_fn(), env), map])
         }
     }
 }

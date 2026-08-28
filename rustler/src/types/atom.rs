@@ -16,7 +16,7 @@ impl Atom {
         self.term
     }
 
-    pub fn to_term(self, env: Env) -> Term {
+    pub(crate) fn to_term(self, env: Env) -> Term {
         // Safe because atoms are not associated with any environment.
         unsafe { Term::new(env, self.term) }
     }
@@ -80,6 +80,15 @@ impl Atom {
             }
             Atom::from_bytes(env, &bytes)
         }
+    }
+
+    /// Return the atom whose text representation is `string` in the current
+    /// thread-local environment.
+    ///
+    /// This remains public because the `atoms!` macro expands to this helper.
+    #[inline]
+    pub fn from_str_current(string: &str) -> NifResult<Atom> {
+        Env::with_current(|env| Atom::from_str(env, string))
     }
 }
 
@@ -214,13 +223,9 @@ macro_rules! atoms {
             fn get() -> &'static Self {
                 use std::sync::OnceLock;
                 static RUSTLER_ATOMS: OnceLock<RustlerAtoms> = OnceLock::new();
-                RUSTLER_ATOMS.get_or_init(||
-                    $crate::env::OwnedEnv::new().run(|env| {
-                        RustlerAtoms {
-                            $( $name: $crate::atoms!(@internal_make_atom(env, $name $( = $str)? )) ),*
-                        }
-                    })
-                )
+                RUSTLER_ATOMS.get_or_init(|| RustlerAtoms {
+                    $( $name: $crate::atoms!(@internal_make_atom($name $( = $str)? )) ),*
+                })
             }
         }
         $(
@@ -232,11 +237,11 @@ macro_rules! atoms {
     };
 
     // Internal helper macros.
-    { @internal_make_atom($env:ident, $name:ident) } => {
-        $crate::atoms!(@internal_make_atom($env, $name = stringify!($name)))
+    { @internal_make_atom($name:ident) } => {
+        $crate::atoms!(@internal_make_atom($name = stringify!($name)))
     };
-    { @internal_make_atom($env:ident, $name:ident = $str:expr) } => {
-        $crate::types::atom::Atom::from_str($env, $str)
+    { @internal_make_atom($name:ident = $str:expr) } => {
+        $crate::types::atom::Atom::from_str_current($str)
             .expect("rustler::atoms!: bad atom string")
     };
 }

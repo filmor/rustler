@@ -1,3 +1,6 @@
+#![allow(unexpected_cfgs)]
+#![allow(deprecated)]
+
 mod test_atom;
 mod test_binary;
 mod test_codegen;

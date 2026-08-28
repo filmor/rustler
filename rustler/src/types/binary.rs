@@ -187,6 +187,7 @@ impl OwnedBinary {
     pub fn release(self, env: Env) -> Binary {
         Binary::from_owned(self, env)
     }
+
 }
 
 impl Borrow<[u8]> for OwnedBinary {
@@ -370,7 +371,7 @@ impl<'a> Binary<'a> {
     /// Returns an Erlang term representation of `self`.
     #[allow(clippy::wrong_self_convention)]
     #[inline]
-    pub fn to_term<'b>(&self, env: Env<'b>) -> Term<'b> {
+    pub(crate) fn to_term<'b>(&self, env: Env<'b>) -> Term<'b> {
         self.term.in_env(env)
     }
 
@@ -471,6 +472,7 @@ impl<'a> Term<'a> {
     pub fn into_binary(self) -> NifResult<Binary<'a>> {
         Binary::from_term(self)
     }
+
 }
 
 impl<'a> From<Binary<'a>> for Term<'a> {
@@ -498,6 +500,7 @@ impl<'a> NewBinary<'a> {
         let (buf, term) = unsafe { new_binary(env, size) };
         NewBinary { buf, term, size }
     }
+
     /// Extracts a slice containing the entire binary.
     #[inline]
     pub fn as_slice(&self) -> &[u8] {
